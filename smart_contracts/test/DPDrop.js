@@ -143,17 +143,7 @@ describe("DPDrop", function () {
     await expect(mintsRemaining.toNumber()).to.equal(this.knownTokenLimit.toNumber() - 1);
   });
 
-  it("Should fail when known mint and sale is not started", async function () {
-    await expect(this.dPDrop.knownMint(this.user1.address, 1, {value: 0})).to.be.revertedWith('Sale not started');
-  });
-
-  it("Should fail when known mint has insufficient funds", async function () {
-    await this.dPDrop.startSale();
-    const tokenId = this.randomTokenLimit.toNumber() + 1;
-    await expect(this.dPDrop.knownMint(this.user1.address, tokenId, {value: 0})).to.be.revertedWith('Insufficient funds');
-  });
-
-  it("Should known mint first token with correct tokenId", async function () {
+  it("Should known mint first token with correct tokenId for the first & last", async function () {
     await this.dPDrop.startSale(); 
     const tokenId = this.randomTokenLimit.toNumber() + 1;
     await expect(this.dPDrop.knownMint(this.user1.address, tokenId, {value: this.knownMintPrice}))
@@ -163,6 +153,25 @@ describe("DPDrop", function () {
         this.user1.address,
         tokenId
       );
+
+      const lastTokenId = this.randomTokenLimit.toNumber() + this.knownTokenLimit.toNumber();
+      await expect(this.dPDrop.knownMint(this.user1.address, lastTokenId, {value: this.knownMintPrice}))
+        .to.emit(this.dPDrop, "Transfer")
+        .withArgs(
+          ethers.constants.AddressZero,
+          this.user1.address,
+          lastTokenId
+        );
+  });
+
+  it("Should fail when known mint and sale is not started", async function () {
+    await expect(this.dPDrop.knownMint(this.user1.address, 1, {value: 0})).to.be.revertedWith('Sale not started');
+  });
+
+  it("Should fail when known mint has insufficient funds", async function () {
+    await this.dPDrop.startSale();
+    const tokenId = this.randomTokenLimit.toNumber() + 1;
+    await expect(this.dPDrop.knownMint(this.user1.address, tokenId, {value: 0})).to.be.revertedWith('Insufficient funds');
   });
 
   it("Should fail when known minting a tokenId that is a random mint", async function () {
