@@ -8,8 +8,18 @@ describe("DPDrop", function () {
     this.name = "DPDrop";
     this.symbol = "DPD";
 
+    // Reveal date set ~1 hour in the future so reveal cannot fire instantly.
+    const now = (await this.provider.getBlock("latest")).timestamp;
+    this.revealDate = now + 3600;
+
     this.DPDrop = await hre.ethers.getContractFactory("DPDrop");
-    this.dPDrop = await this.DPDrop.deploy(this.name, this.symbol, this.baseURI);
+    this.dPDrop = await this.DPDrop.deploy(
+      this.name,
+      this.symbol,
+      this.baseURI,
+      this.admin.address,
+      this.revealDate
+    );
     await this.dPDrop.deployed();
     this.randomTokenLimit = await this.dPDrop.RANDOM_TOKEN_LIMIT();
     this.knownTokenLimit = await this.dPDrop.KNOWN_TOKEN_LIMIT();
@@ -210,44 +220,48 @@ describe("DPDrop", function () {
   });
 
 
+  // Helper: fast-forward past the reveal date
+  async function passRevealDate(context) {
+    await context.provider.send("evm_setNextBlockTimestamp", [context.revealDate + 1]);
+    await context.provider.send("evm_mine", []);
+  }
+
   // Before Reveal date
 
-  // it("Should fail when revealing before reveal date", async function () {
-  //   await expect(this.dPDrop.connect(this.admin).reveal()).to.be.revertedWith('Reveal not started');
-  // });
+  it("Should fail when revealing before reveal date", async function () {
+    await expect(this.dPDrop.connect(this.admin).reveal()).to.be.revertedWith('Reveal not started');
+  });
 
   // After reveal date
 
-    it("Should fail when revealing twice", async function () {
-      await this.dPDrop.connect(this.admin).reveal();
-      await expect(this.dPDrop.connect(this.admin).reveal()).to.be.revertedWith('Already shuffled');
-    });
+  it("Should fail when revealing twice", async function () {
+    await passRevealDate(this);
+    await this.dPDrop.connect(this.admin).reveal();
+    await expect(this.dPDrop.connect(this.admin).reveal()).to.be.revertedWith('Already shuffled');
+  });
 
-    it("Should set shuffled to true after reveal", async function () {
-      await this.dPDrop.connect(this.admin).reveal()
-      expect(await this.dPDrop.shuffled()).to.equal(true);
-    });
+  it("Should set shuffled to true after reveal", async function () {
+    await passRevealDate(this);
+    await this.dPDrop.connect(this.admin).reveal()
+    expect(await this.dPDrop.shuffled()).to.equal(true);
+  });
 
-    it("Should fail if reveal is not admin", async function () {
-      await expect(this.dPDrop.reveal()).to.be.reverted;
-    });
+  it("Should fail if reveal is not admin", async function () {
+    await passRevealDate(this);
+    await expect(this.dPDrop.reveal()).to.be.reverted;
+  });
 
-  // Mock Token Limits
+  // Known mint limit
 
-  // it("Should fail when there are no random mints available", async function () {
-  //   await this.dPDrop.startSale();
-  //   for (let i = 0; i < this.randomTokenLimit; i++) {
-  //     await this.dPDrop.randomMint(this.user1.address, 1, {value: this.randomMintPrice});
-  //   }
-  //   await expect(this.dPDrop.randomMint(this.user1.address, 1, {value: this.randomMintPrice})).to.be.revertedWith('Sale limit reached');
-  // });
-
-  // it("Should fail when there are no known mints available", async function () {
-  //   await this.dPDrop.startSale();
-  //   for (let i = 0; i < this.knownTokenLimit; i++) {
-  //     const tokenId = this.randomTokenLimit.toNumber() + i;
-  //     await this.dPDrop.knownMint(this.user1.address, tokenId, {value: this.knownMintPrice});
-  //   }
-  //   await expect(this.dPDrop.knownMint(this.user1.address, {value: this.knownMintPrice})).to.be.revertedWith('Sale limit reached');
-  // });
+  it("Should fail when there are no known mints available", async function () {
+    await this.dPDrop.startSale();
+    const limit = this.knownTokenLimit.toNumber();
+    for (let i = 1; i <= limit; i++) {
+      const tokenId = this.randomTokenLimit.toNumber() + i;
+      await this.dPDrop.knownMint(this.user1.address, tokenId, {value: this.knownMintPrice});
+    }
+    // All known tokens minted; the supply guard rejects any further mint.
+    const overLimitTokenId = this.randomTokenLimit.toNumber() + limit + 1;
+    await expect(this.dPDrop.knownMint(this.user1.address, overLimitTokenId, {value: this.knownMintPrice})).to.be.revertedWith('Sale limit reached');
+  });
 });

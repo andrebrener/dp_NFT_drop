@@ -302,93 +302,111 @@ describe("DPAuction", function () {
     await expect(this.dPAuction.bid({value: secondNewBid})).to.be.revertedWith('Amount is not greater than max bid plus percentage');
   });
 
+  // Helper: fast-forward past the auction finish time
+  async function passFinishTime(context) {
+    const finishTime = await context.dPAuction.finishTime();
+    await context.provider.send("evm_setNextBlockTimestamp", [finishTime.toNumber() + 1]);
+    await context.provider.send("evm_mine", []);
+  }
+
   // Auction Ended - Success
 
-  // it("Should allow the winner to mint", async function () {
-  //   await this.dPAuction.startAuction();
-  //   await this.dPAuction.mint()
-  //   await expect(await this.dPAuction.balanceOf(this.user1.address)).to.equal(1);
-  // });
+  it("Should allow the winner to mint", async function () {
+    await this.dPAuction.startAuction();
+    const newBid = ethers.utils.parseEther((this.minBidEth * 2).toString());
+    await this.dPAuction.connect(this.user2).bid({value: newBid});
+    await passFinishTime(this);
+    await this.dPAuction.connect(this.user2).mint();
+    await expect(await this.dPAuction.balanceOf(this.user2.address)).to.equal(1);
+  });
 
-  // it("Should mint with correct tokenURI", async function () {
-  //   await this.dPAuction.startAuction();
-  //   await this.dPAuction.mint()
-  //   await expect(await this.dPAuction.tokenURI(1)).to.equal(this.tokenURI);
-  // });
+  it("Should mint with correct tokenURI", async function () {
+    await this.dPAuction.startAuction();
+    const newBid = ethers.utils.parseEther((this.minBidEth * 2).toString());
+    await this.dPAuction.connect(this.user2).bid({value: newBid});
+    await passFinishTime(this);
+    await this.dPAuction.connect(this.user2).mint();
+    await expect(await this.dPAuction.tokenURI(1)).to.equal(this.tokenURI);
+  });
 
-  // it("Should set minted to true after mint", async function () {
-  //   await this.dPAuction.startAuction();
-  //   await this.dPAuction.mint()
-  //   await expect(await this.dPAuction.minted()).to.equal(true);
-  // });
+  // Auction Ended - Failed
 
-  // // Auction Ended - Failed
+  it("Should fail when bidding and auction is ended", async function () {
+    await this.dPAuction.startAuction();
+    await passFinishTime(this);
+    const newBid = ethers.utils.parseEther((this.minBidEth * 2).toString());
+    await expect(this.dPAuction.bid({value: newBid})).to.be.revertedWith('Auction has ended');
+  });
 
-  // it("Should fail when bidding and auction is ended", async function () {
-  //   await this.dPAuction.startAuction();
-  //   await expect(this.dPAuction.bid({value: 0})).to.be.revertedWith('Auction has ended');
-  // });
+  it("Should fail minting and not winner", async function () {
+    await this.dPAuction.startAuction();
+    const newBid = ethers.utils.parseEther((this.minBidEth * 2).toString());
+    await this.dPAuction.connect(this.user2).bid({value: newBid});
+    await passFinishTime(this);
+    await expect(this.dPAuction.connect(this.user3).mint()).to.be.revertedWith('Minter is not the winner');
+  });
 
-  // it("Should fail minting and not winner", async function () {
-  //   await this.dPAuction.startAuction();
-  //   await expect(this.dPAuction.connect(this.user2).mint()).to.be.revertedWith('Minter is not the winner');
-  // });
+  it("Should fail when minting twice", async function () {
+    await this.dPAuction.startAuction();
+    const newBid = ethers.utils.parseEther((this.minBidEth * 2).toString());
+    await this.dPAuction.connect(this.user2).bid({value: newBid});
+    await passFinishTime(this);
+    await this.dPAuction.connect(this.user2).mint();
+    await expect(this.dPAuction.connect(this.user2).mint()).to.be.revertedWith('ERC721: token already minted');
+  });
 
-  // it("Should fail when minting twice", async function () {
-  //   await this.dPAuction.startAuction();
-  //   await this.dPAuction.mint();
-  //   await expect(this.dPAuction.mint()).to.be.revertedWith('ERC721: token already minted');
-  // });
+  it("Should fail when recovering funds and sender not owner", async function () {
+    await this.dPAuction.startAuction();
+    await passFinishTime(this);
+    await expect(this.dPAuction.connect(this.user2).recoverFunds()).to.be.revertedWith('Ownable: caller is not the owner');
+  });
 
-  // it("Should fail when recovering funds and sender not owner", async function () {
-  //   await this.dPAuction.startAuction();
-  //   await expect(this.dPAuction.connect(this.user2).recoverFunds()).to.be.revertedWith('Ownable: caller is not the owner');
-  // });
+  // Auction Ended - Recover funds
 
-  // // Auction Ended + No restriction in Bid - Success
+  it("Should recover funds correctly", async function () {
+    // Bid
+    await this.dPAuction.startAuction();
+    const etherBid = this.minBidEth * 10
+    const newBid = ethers.utils.parseEther(etherBid.toString());
+    await this.dPAuction.connect(this.user2).bid({value: newBid});
 
-  // it("Should recover funds correcty", async function () {
-  //   // Bid
-  //   await this.dPAuction.startAuction();
-  //   const etherBid = this.minBidEth * 10
-  //   const newBid = ethers.utils.parseEther(etherBid.toString());
-  //   await this.dPAuction.connect(this.user2).bid({value: newBid});
+    await passFinishTime(this);
 
-  //   // Recover
-  //   const balanceBefore = await this.provider.getBalance(this.user1.address);
-  //   const balanceBeforeEth = parseInt(ethers.utils.formatEther(balanceBefore.toString()))
+    // Recover
+    const balanceBefore = await this.provider.getBalance(this.user1.address);
+    const balanceBeforeEth = parseInt(ethers.utils.formatEther(balanceBefore.toString()))
 
-  //   const tx = await this.dPAuction.recoverFunds();
-  //   const balanceAfter = await this.provider.getBalance(this.user1.address);
-  //   const balanceAfterEth = parseInt(ethers.utils.formatEther(balanceAfter.toString()))
+    await this.dPAuction.recoverFunds();
+    const balanceAfter = await this.provider.getBalance(this.user1.address);
+    const balanceAfterEth = parseInt(ethers.utils.formatEther(balanceAfter.toString()))
 
-  //   const balanceDiff = balanceAfterEth - balanceBeforeEth;
+    const balanceDiff = balanceAfterEth - balanceBeforeEth;
 
-  //   await expect(balanceDiff).to.equal(etherBid);
-  // });
+    await expect(balanceDiff).to.equal(etherBid);
+  });
 
-  // it("Should set recoveredFunds to true", async function () {
-  //   // Bid
-  //   await this.dPAuction.startAuction();
-  //   const etherBid = this.minBidEth * 2
-  //   const newBid = ethers.utils.parseEther(etherBid.toString());
-  //   await this.dPAuction.connect(this.user2).bid({value: newBid});
-  //   // Recover
-  //   await this.dPAuction.recoverFunds();
-  //   await expect(await this.dPAuction.fundsRecovered()).to.equal(true);
-  // });
+  it("Should set recoveredFunds to true", async function () {
+    // Bid
+    await this.dPAuction.startAuction();
+    const etherBid = this.minBidEth * 2
+    const newBid = ethers.utils.parseEther(etherBid.toString());
+    await this.dPAuction.connect(this.user2).bid({value: newBid});
+    await passFinishTime(this);
+    // Recover
+    await this.dPAuction.recoverFunds();
+    await expect(await this.dPAuction.fundsRecovered()).to.equal(true);
+  });
 
-  // // Auction Ended + No restriction in Bid - Failed
-  
-  // it("Should fail when recovering funds twice", async function () {
-  //   // Bid
-  //   await this.dPAuction.startAuction();
-  //   const etherBid = this.minBidEth * 2
-  //   const newBid = ethers.utils.parseEther(etherBid.toString());
-  //   await this.dPAuction.connect(this.user2).bid({value: newBid});
-  //   // Recover
-  //   await this.dPAuction.recoverFunds();
-  //   await expect(this.dPAuction.recoverFunds()).to.be.revertedWith('Already recovered');
-  // });
+  it("Should fail when recovering funds twice", async function () {
+    // Bid
+    await this.dPAuction.startAuction();
+    const etherBid = this.minBidEth * 2
+    const newBid = ethers.utils.parseEther(etherBid.toString());
+    await this.dPAuction.connect(this.user2).bid({value: newBid});
+    await passFinishTime(this);
+    // Recover
+    await this.dPAuction.recoverFunds();
+    await expect(this.dPAuction.recoverFunds()).to.be.revertedWith('Already recovered');
+  });
 
 });
