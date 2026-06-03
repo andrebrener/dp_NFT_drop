@@ -1,14 +1,22 @@
 {
-  "name": "smart_contracts",
+  "name": "dp-nft-drop",
   "version": "1.0.0",
-  "description": "",
+  "description": "Hardhat ERC-721 contracts for random, fixed-ID, and auction-based NFT drops (educational, unaudited).",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "hardhat test",
+    "compile": "hardhat compile"
   },
-  "keywords": [],
+  "keywords": [
+    "solidity",
+    "ethereum",
+    "nft",
+    "erc721",
+    "hardhat",
+    "auction"
+  ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.2",
     "@nomiclabs/hardhat-waffle": "^2.0.1",
