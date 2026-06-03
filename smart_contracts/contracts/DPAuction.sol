@@ -34,7 +34,6 @@ contract DPAuction is
     // Auction data
     bool public auctionStarted = false;
     uint256 public startAuctionTime;
-    // uint256 public DURATION = 0;
     uint256 public DURATION = 7 minutes;
 
     // Events
@@ -85,7 +84,7 @@ contract DPAuction is
             "Amount is not greater than max bid plus percentage"
         );
 
-        // Set bidder pendingWithdawals to zero
+        // Set bidder pendingWithdrawals to zero
         pendingWithdrawals[bidder] = 0;
 
         // Add withdraw funds to previous max bidder
@@ -103,17 +102,20 @@ contract DPAuction is
         address receiver = msg.sender;
 
         uint256 amount = pendingWithdrawals[receiver];
+
+        // Checks-effects-interactions: zero the balance before the external
+        // call so a re-entrant withdraw cannot drain funds.
+        pendingWithdrawals[receiver] = 0;
+
         payable(receiver).sendValue(amount);
 
         emit Withdraw(receiver, amount);
-
-        pendingWithdrawals[receiver] = 0;
     }
 
     function recoverFunds() public onlyOwner nonReentrant {
         require(block.timestamp > finishTime(), "Auction has not ended");
         require(!fundsRecovered, "Already recovered");
-        // Tranfer the maximum bid to owner
+        // Transfer the maximum bid to owner
         payable(owner()).sendValue(maxBid);
         fundsRecovered = true;
     }
