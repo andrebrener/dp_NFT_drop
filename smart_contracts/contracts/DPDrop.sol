@@ -24,8 +24,7 @@ contract DPDrop is AccessControl, ERC721, ERC721Burnable {
     uint256 public constant KNOWN_TOKEN_LIMIT = 10;
     uint256 public constant KNOWN_MINT_PRICE = 0.2 ether;
 
-    uint256 public REVEAL_DATE = 0;
-    // uint256 public REVEAL_DATE = 1646103600;
+    uint256 public immutable REVEAL_DATE;
 
     bool public shuffled = false;
     uint256 public shuffleOffset = 0;
@@ -42,17 +41,27 @@ contract DPDrop is AccessControl, ERC721, ERC721Burnable {
     // Event
     event SaleBegins();
 
+    /**
+     * @param admin Address granted DEFAULT_ADMIN_ROLE (setBaseURI, reveal,
+     *        recoverFunds). Must be supplied explicitly so admin control is
+     *        never silently handed to a hardcoded/known account.
+     * @param revealDate Unix timestamp before which {reveal} cannot run. Must
+     *        be in the future so the reveal cannot fire instantly.
+     */
     constructor(
         string memory name,
         string memory symbol,
-        string memory initialBaseURI
+        string memory initialBaseURI,
+        address admin,
+        uint256 revealDate
     ) ERC721(name, symbol) {
-        baseURI = initialBaseURI;
+        require(admin != address(0), "Admin is the zero address");
+        require(revealDate > block.timestamp, "Reveal date must be in future");
 
-        _setupRole(
-            DEFAULT_ADMIN_ROLE,
-            0x90F79bf6EB2c4f870365E785982E1f101E93b906
-        );
+        baseURI = initialBaseURI;
+        REVEAL_DATE = revealDate;
+
+        _setupRole(DEFAULT_ADMIN_ROLE, admin);
         _setupRole(STARTER_ROLE, _msgSender());
     }
 
@@ -99,6 +108,17 @@ contract DPDrop is AccessControl, ERC721, ERC721Burnable {
         emit SaleBegins();
     }
 
+    /**
+     * @dev Computes the metadata shuffle offset.
+     *
+     * SECURITY WARNING: `shuffleOffset` is derived from `lastBlockHash`, which
+     * is built in {randomMint} from `block.difficulty` and `block.timestamp`.
+     * Both inputs are predictable and miner/validator-manipulable, so the
+     * resulting offset can be computed or influenced in advance. This is NOT
+     * secure randomness and MUST NOT be relied upon in production. A verifiable
+     * source such as Chainlink VRF is required for a fair random drop. See the
+     * "Security limitations" section of the README.
+     */
     function reveal() public onlyRole(DEFAULT_ADMIN_ROLE) {
         require(block.timestamp > REVEAL_DATE, "Reveal not started");
         require(!shuffled, "Already shuffled");
@@ -118,6 +138,9 @@ contract DPDrop is AccessControl, ERC721, ERC721Burnable {
             _randomNumTokens.increment();
         }
 
+        // SECURITY WARNING: predictable, miner/validator-manipulable seed.
+        // Not secure randomness — see {reveal} and the README. Replace with
+        // Chainlink VRF before any production use.
         lastBlockHash = uint256(
             keccak256(abi.encodePacked(block.difficulty, block.timestamp))
         );
@@ -125,6 +148,7 @@ contract DPDrop is AccessControl, ERC721, ERC721Burnable {
 
     function knownMint(address to, uint256 tokenId) public payable virtual {
         require(saleStarted, "Sale not started");
+        require(knownMintsRemaining() > 0, "Sale limit reached");
         require(
             tokenId > RANDOM_TOKEN_LIMIT,
             "Selected Token Id is for random mint"
